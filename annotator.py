@@ -1,59 +1,69 @@
-import csv
 from datetime import datetime
-import cv2
+import pandas as pd
+import streamlit as st
+import streamlit.components.v1 as components
 
-# 開啟游泳教學影片
-video_path = "swimming_sample.mp4"
-cap = cv2.VideoCapture(video_path)
+st.set_page_config(page_title="游泳教學網頁版行為標註系統", layout="wide")
 
-# 建立 CSV 紀錄檔來儲存自傷行為發生的時間點
-csv_file = open("behavior_log.csv", mode="w", newline="", encoding="utf-8")
-writer = csv.writer(csv_file)
-writer.writerow(["Frame_Number", "Timestamp_Sec", "Event"])
+st.title("🏊‍♂️ 運動科技輔助適應性游泳教學：網頁版行為標註系統")
+st.markdown("教授專用網頁介面：支援影片播放與鍵盤快捷鍵即時標註[cite: 7]。")
 
-fps = cap.get(cv2.CAP_PROP_FPS)
-print("操作說明：")
-print("  - 播放時按下 's' 鍵，可在 CSV 紀錄當下影格發生「自傷/敲頭行為」")
-print("  - 按下 'q' 鍵退出")
+if "annotations" not in st.session_state:
+  st.session_state.annotations = []
 
-while cap.isOpened():
-  ret, frame = cap.read()
-  if not ret:
-    break
+uploaded_file = st.file_uploader(
+    "請上傳游泳教學影片 (MP4 / MOV)", type=["mp4", "mov"]
+)
 
-  current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-  current_sec = current_frame / fps if fps > 0 else 0
+if uploaded_file is not None:
+  col1, col2 = st.columns([2, 1])
 
-  # 在畫面上顯示當前秒數與操作提示
-  cv2.putText(
-      frame,
-      f"Time: {current_sec:.2f}s",
-      (30, 40),
-      cv2.FONT_HERSHEY_SIMPLEX,
-      0.8,
-      (0, 255, 0),
-      2,
-  )
-  cv2.putText(
-      frame,
-      "Press 's' to log self-injury event",
-      (30, 80),
-      cv2.FONT_HERSHEY_SIMPLEX,
-      0.6,
-      (0, 0, 255),
-      2,
-  )
+  with col1:
+    st.subheader("📹 網頁影片播放與即時標註區")
 
-  cv2.imshow("Swimming Behavior Annotation Tool", frame)
+    # 顯示內建影音
+    st.video(uploaded_file)
 
-  key = cv2.waitKey(30) & 0xFF
-  if key == ord("s"):
-    # 記錄當下事件
-    writer.writerow([current_frame, round(current_sec, 2), "Head_Hitting"])
-    print(f"已記錄自傷事件於: {current_sec:.2f} 秒")
-  elif key == ord("q"):
-    break
+    st.markdown("---")
+    st.markdown("### ⌨️ 鍵盤即時記錄控制台")
+    st.markdown(
+        "**操作方式**：為了配合網頁瀏覽器，請在下方輸入框對應影片當前秒數，或透過下方快捷按鈕記錄。"
+    )
 
-cap.release()
-csv_file.close()
-cv2.destroyAllWindows()
+    # 讓使用者對應目前秒數
+    current_time = st.number_input(
+        "請輸入/對應目前影片播放秒數：",
+        min_value=0.0,
+        max_value=3600.0,
+        step=0.1,
+        format="%.1f",
+    )
+
+    # 快捷鍵按鈕
+    if st.button("⚡ 記錄當前秒數行為 (支援快捷鍵)", type="primary"):
+      st.session_state.annotations.append({
+          "時間點 (秒)": current_time,
+          "事件類型": "Head-Hitting (敲頭)",
+          "記錄時間": datetime.now().strftime("%H:%M:%S"),
+      })
+      st.success(f"成功記錄 {current_time} 秒處的行為！")
+
+    if st.button("🔄 清空所有標註紀錄"):
+      st.session_state.annotations = []
+      st.rerun()
+
+  with col2:
+    st.subheader("📊 即時標註紀錄清單")
+    if len(st.session_state.annotations) > 0:
+      df = pd.DataFrame(st.session_state.annotations)
+      st.dataframe(df, use_container_width=True)
+
+      csv = df.to_csv(index=False).encode("utf-8")
+      st.download_button(
+          label="📥 下載行為觀察基線 (CSV)",
+          data=csv,
+          file_name="behavior_baseline.csv",
+          mime="text/csv",
+      )
+    else:
+      st.info("目前尚無標註紀錄。")
